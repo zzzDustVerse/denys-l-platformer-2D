@@ -4,10 +4,10 @@ public class DynamicCamera : MonoBehaviour
 {
 
     
-    private GameObject gb;
+    
     [Header("Target")]
     [SerializeField] private Transform player;
-    public float hp = 100f;
+    
 
     [Header("Follow")]
     [SerializeField] private float smoothTime = 0.15f;
@@ -125,11 +125,5 @@ public class DynamicCamera : MonoBehaviour
         );
     }
 
-    private void Death()
-    {
-        if (hp <= 0 )
-        {
-            Destroy(gb);
-        }
-    }
+    
 }
