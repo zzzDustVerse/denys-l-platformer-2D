@@ -5,15 +5,18 @@ using System.Collections;
 [RequireComponent(typeof(Collider2D))]
 public class Movement : MonoBehaviour
 {
-    public float hp = 100f;
+    public int hp = 100;
     public GameObject gb;
+
     [Header("Movement")]
     public float moveSpeed = 5f;
     public float acceleration = 35f;
     public float deceleration = 45f;
 
     [Header("Jump")]
-    public float jumpForce = 16f;
+    public float jumpForce = 10f;
+    public float jumpHoldForce = 25f;
+    public float maxJumpHoldTime = 0.3f;
     public float fallMultiplier = 2.5f;
     public float jumpCutMultiplier = 0.5f;
 
@@ -44,6 +47,8 @@ public class Movement : MonoBehaviour
     private bool touchingLeftWall;
     private bool touchingRightWall;
 
+    private bool isJumping;
+    private float jumpHoldTimer;
     private float wallJumpTimer;
 
     private void Awake()
@@ -56,8 +61,12 @@ public class Movement : MonoBehaviour
     {
         if (hp <= 0)
         {
-            Destroy(gb);
+            if (gb != null)
+                Destroy(gb);
+
+            return;
         }
+
         // WASD / Arrow input
         movementInput = new Vector2(
             Input.GetAxisRaw("Horizontal"),
@@ -73,7 +82,7 @@ public class Movement : MonoBehaviour
         CheckGround();
         CheckWalls();
 
-        // Normal jump
+        // Start jump
         if (Input.GetButtonDown("Jump"))
         {
             if (isGrounded)
@@ -86,17 +95,24 @@ public class Movement : MonoBehaviour
             }
         }
 
-        // Variable jump height
-        if (Input.GetButtonUp("Jump") && rb.velocity.y > 0f)
+        // Release jump to stop gaining height
+        if (Input.GetButtonUp("Jump"))
         {
-            rb.velocity = new Vector2(
-                rb.velocity.x,
-                rb.velocity.y * jumpCutMultiplier
-            );
+            isJumping = false;
+
+            // Cut upward velocity for a shorter jump
+            if (rb.velocity.y > 0f)
+            {
+                rb.velocity = new Vector2(
+                    rb.velocity.x,
+                    rb.velocity.y * jumpCutMultiplier
+                );
+            }
         }
 
         // Dash
-        if (Input.GetKeyDown(KeyCode.LeftShift) && canDash && !isDashing)
+        if (Input.GetKeyDown(KeyCode.LeftShift) &&
+            canDash && !isDashing)
         {
             StartCoroutine(Dash());
         }
@@ -114,6 +130,18 @@ public class Movement : MonoBehaviour
         {
             Move();
             ApplyGravity();
+
+            // Apply extra upward force while holding jump
+            if (isJumping &&
+                Input.GetButton("Jump") &&
+                jumpHoldTimer < maxJumpHoldTime &&
+                rb.velocity.y > 0f)
+            {
+                rb.velocity += Vector2.up *
+                    jumpHoldForce * Time.fixedDeltaTime;
+
+                jumpHoldTimer += Time.fixedDeltaTime;
+            }
         }
     }
 
@@ -128,7 +156,6 @@ public class Movement : MonoBehaviour
             return;
 
         float targetSpeed = movementInput.x * moveSpeed;
-
         float difference = targetSpeed - rb.velocity.x;
 
         float rate = Mathf.Abs(movementInput.x) > 0.01f
@@ -158,6 +185,9 @@ public class Movement : MonoBehaviour
             rb.velocity.x,
             jumpForce
         );
+
+        isJumping = true;
+        jumpHoldTimer = 0f;
     }
 
     // =========================================================
@@ -168,12 +198,12 @@ public class Movement : MonoBehaviour
     {
         float direction;
 
-        // Wall on left → jump right
+        // Wall on left -> jump right
         if (touchingLeftWall)
         {
             direction = 1f;
         }
-        // Wall on right → jump left
+        // Wall on right -> jump left
         else
         {
             direction = -1f;
@@ -183,6 +213,10 @@ public class Movement : MonoBehaviour
             direction * wallJumpHorizontalForce,
             wallJumpForce
         );
+
+        // Allow variable height for wall jumps too
+        isJumping = true;
+        jumpHoldTimer = 0f;
 
         // Prevent normal movement from immediately cancelling
         wallJumpTimer = wallJumpCooldown;
@@ -218,10 +252,8 @@ public class Movement : MonoBehaviour
     private void CheckWalls()
     {
         Bounds bounds = playerCollider.bounds;
-
         Vector2 center = bounds.center;
 
-        // Check left
         RaycastHit2D leftHit = Physics2D.Raycast(
             center,
             Vector2.left,
@@ -229,7 +261,6 @@ public class Movement : MonoBehaviour
             groundLayer
         );
 
-        // Check right
         RaycastHit2D rightHit = Physics2D.Raycast(
             center,
             Vector2.right,
@@ -279,13 +310,11 @@ public class Movement : MonoBehaviour
         float oldGravity = rb.gravityScale;
 
         rb.gravityScale = 0f;
-
         rb.velocity = dashDirection * dashSpeed;
 
         yield return new WaitForSeconds(dashTime);
 
         rb.gravityScale = oldGravity;
-
         rb.velocity *= 0.2f;
 
         isDashing = false;
@@ -308,9 +337,9 @@ public class Movement : MonoBehaviour
 
         Bounds bounds = col.bounds;
 
+        // Ground check
         Gizmos.color = Color.green;
 
-        // Ground
         Vector3 groundStart = new Vector3(
             bounds.center.x,
             bounds.min.y,
@@ -322,7 +351,7 @@ public class Movement : MonoBehaviour
             groundStart + Vector3.down * groundCheckDistance
         );
 
-        // Left wall
+        // Wall checks
         Gizmos.color = Color.blue;
 
         Gizmos.DrawLine(
@@ -331,13 +360,10 @@ public class Movement : MonoBehaviour
             (bounds.extents.x + wallCheckDistance)
         );
 
-        // Right wall
         Gizmos.DrawLine(
             bounds.center,
             bounds.center + Vector3.right *
             (bounds.extents.x + wallCheckDistance)
         );
-
     }
-    
 }
